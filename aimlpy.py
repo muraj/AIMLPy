@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #from xml.dom import minidom
 import xml.etree.ElementTree as ElementTree
 import re
@@ -26,7 +26,7 @@ class AIMLParser:
                     'I': 'he',  #1st -> 3rd person
                     'me': 'him',
                     'myself': 'himself',
-                    'mine': 'his'
+                    'mine': 'his',
                     'my': 'his',
 
                     'we': 'they',
@@ -59,12 +59,12 @@ class AIMLParser:
                     'themselves':'myself',
                     'theirs':'mine',
                     'their':'my',
-                    }
+                    },
               'person2': {
                     'I': 'you',  #1st -> 2nd person
                     'me': 'you',
                     'myself': 'yourself',
-                    'mine': 'yours'
+                    'mine': 'yours',
                     'my': 'your',
 
                     'we': 'you',
@@ -72,7 +72,7 @@ class AIMLParser:
                     'ourselves': 'yourselves',
                     'ours': 'yours',
                     'our': 'your',
-                    }
+                    },
               'gender': {
                     'he':'she',
                     'him':'her',
@@ -118,25 +118,26 @@ class AIMLParser:
 
   @static_var('split_regex', re.compile(r'(<bot.*?\/>)|\s+'))
   def make_path(self, pattern):
-    return [ tok for tok in self.make_path.split_regex.split(pattern) if tok != None]
+    return [ tok.upper() for tok in self.make_path.split_regex.split(pattern) if tok != None]
 
   def innerText(self, node):
     return ElementTree.tostring(node)[2+len(node.tag):-(4+len(node.tag))].strip().decode('utf-8', 'replace')
 
   def do_aiml(self, node):
-    for n in list(node):
+    for n in node:
         self._parse(n)
 
   def do_topic(self, node):
     self._topic = node.get('name', '*')
-    for n in list(node):
+    for n in node:
       self._parse(n)
     self._topic = '*'
 
   def do_category(self, node):
     template = ElementTree.tostring(node.find('template')).decode('utf-8', 'replace')
     pattern = node.find('pattern')
-    pattern = self.make_path(self.innerText(pattern))
+    txt=self.innerText(pattern)
+    pattern = self.make_path(txt)
     pattern.append(self.magic_words['that'])
     that = node.find('that')
     if that != None:
@@ -186,10 +187,11 @@ class Brain:
       self.brain[k] = s[k]
     s.close()
 
-  def reply(self, msg, user):
+  def reply(self, msg, user=''):
     return self.match(msg, user, record=True)
 
   def match(self, inp, user, depth=0, record=False):
+    self.user[user] = self.user.get(user, {}) #Allocate a new user if needed
     current_node = self.brain
     matches = []
     for s in self.normalize(inp):
@@ -210,7 +212,7 @@ class Brain:
   def do_star(self, match, node, depth, user):
     pat = match[:match.index(self.magic_words['that'])]
     stars=[ m for m in pat if type(m) == list]
-    return stars[node.get('index', 0)]
+    return ' '.join(stars[node.get('index', 0)])
 
   def do_that(self, match, node, depth, user):
     ind = [ int(x) for x in node.get('index', '1,1').split(',') ]
@@ -260,10 +262,10 @@ class Brain:
   #def do_gender(self, match, node, depth, user):
 
   def do_date(self, match, node, depth, user):
-    return datetime.date.today().strftime('%c')
+    return datetime.date.today().strftime(node.get('format', '%c'))
 
   def do_id(self, match, node, depth, user):
-    return self._user
+    return user
 
   def do_size(self, match, node, depth, user):
     return '0'
@@ -294,7 +296,7 @@ class Brain:
       return self.respond(match, node, user, depth) if self._match(s) else ''
     else if 'name' in node.keys():
       pred=None #TODO: predicate
-    lis = [ n for n in list(node) if n.tag == 'li' ]
+    lis = [ n for n in node if n.tag == 'li' ]
     default = None
     for li in lis:
       if 'name' in li.keys():
@@ -314,7 +316,7 @@ class Brain:
   def do_set(self, match, node, depth, user):
     txt = self.respond(match, node, user, depth)
     name = node.get('name','')
-    self.user[self._user][name] = txt
+    self.user[user][name] = txt
     return txt
 
   def do_gossip(self, match, node, depth, user):
@@ -329,27 +331,50 @@ class Brain:
     self.respond(match, node, user, depth)
     return ''
 
+  def do_eval(self, match, node, depth, user):
+    return self.respond(match, node, user, depth)
+
   def do_learn(self, match, node, depth, user):
     parser=AIMLParser()
     parser.aiml_graph=self.brain
-    with open(self.respond(match, node, user, depth), 'r') as f:
-      parser.parse(f)
+    def replace_evals(n):
+      while len(n) > 0 and n[0].tag == 'eval':
+        n.text += self.do_eval(match, n[0], user, depth)
+        n.remove(n[0])
+      if len(n) > 0:
+        last=n[0] #Can't be an <eval>
+        for c in n:
+          if c.tag == 'eval':
+            last.tail += self.do_eval(match, c, user, depth)
+            n.remove(c)
+          else:
+            replace_evals(c)
+            last = c
+    replace_evals(node)
+    node.tag = 'aiml' # Treat the <learn> as an <aiml> for parsing
+    parser._parse(node)
     self.brain = parser.aiml_graph
 
   def do_system(self, match, node, depth, user):
     return str(os.system(self.respond(match, node, user, depth)))
 
   def do_javascript(self, match, node, depth, user):
-    #LOG('WARNING: Javascript not implemented')
+    #LOG('ERROR: Javascript not implemented')
     return ''
 
-  @static_var('safe_dict', dict([ (k, getattr(math, k)) for k in dir(math)[4:] ]+[('abs', abs), ('random', random.random)]) )
   def do_python(self, match, node, depth, user):
+    # This allows python code to be parsed and executed
     txt=self.respond(match, node, user, depth)
-    return str(eval(txt, {'__builtins__':None}, self.do_python.safe_dict))
+    locs={'bot':self, 'ret':None}
+    try:
+      exec(txt, {}, locs)
+    except Exception as e:
+      #LOG('ERROR: exception handling python tag\n', e)
+      pass
+    return str(locs.get('ret', ''))
 
   def respond(self, match, template, user, depth=0):
-    if depth > self.bot['recursion']:
+    if depth > self.bot.get('recursion', 10):
       return ''
     txt = template.text if template.text else ''
     for n in list(template):
@@ -448,4 +473,4 @@ if __name__ == '__main__':
 
   while 1:
     s = input('> ')
-    print(brain.match(s, record=True))
+    print(brain.reply(s))
