@@ -206,8 +206,11 @@ class Brain:
       self.resp.append((inp, sentences))
     return ' '.join(sentences)
 
-  def nullfunc(self, match, node, depth):
-    return ElementTree.tostring(node)
+  def nullfunc(self, match, node, depth, user):
+    return ElementTree.tostring(node).decode('utf-8')
+
+  def do_br(self, match, node, depth, user):
+    return '\n'
 
   def do_star(self, match, node, depth, user):
     pat = match[:match.index(self.magic_words['that'])]
@@ -378,7 +381,7 @@ class Brain:
       return ''
     txt = template.text if template.text else ''
     for n in list(template):
-      txt += getattr(self, "do_%s" % n.tag, self.nullfunc)(match, n, depth, user)
+      txt+=getattr(self, "do_%s" % n.tag, self.nullfunc)(match, n, depth, user)
       if n.tail:
         txt += n.tail
     return txt

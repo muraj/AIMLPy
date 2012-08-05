@@ -14,15 +14,18 @@ def input(st):
   return decorator
 
 class PyAIMLTest:
-  def setUp(self):
+  @classmethod
+  def setUpClass(cls):
     a = aimlpy.AIMLParser()
-    for fn in getattr(self.__class__, 'files', []):
+    for fn in getattr(cls, 'files', []):
       with open(fn, 'r') as f:
         a.parse(f)
-    s = getattr(self.__class__, 'inputString', None)
+    s = getattr(cls, 'inputString', None)
     if s:
       a.parseString(s)
-    self.bot = aimlpy.Brain(a.aiml_graph)
+    cls.bot = aimlpy.Brain(a.aiml_graph)
+  def setUp(self):
+    self.bot = self.__class__.bot
 
 # -- Actual tests --
 
@@ -44,7 +47,13 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
     self.assertEqual(self.bot.user['user1']['they'], '1 2 3')
 
   def test_that(self):
-    self.assertEqual(self.bot.reply('YES'), '')
+    pass
+
+  def test_bot(self):
+    self.assertEqual(self.bot.reply('enterprise come in'), ' here.')
+    self.bot.bot['name'] = 'Jordi'
+    self.assertEqual(self.bot.reply('enterprise come in'), 'Jordi here.')
+    self.bot.reply('FORMAT PROPERTIES')
 
 if __name__ == '__main__':
   unittest.main()
