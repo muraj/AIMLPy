@@ -361,7 +361,7 @@ class Brain:
   def do_condition(self, match, node, depth, user):
     if 'name' in node.keys() and 'value' in node.keys():
       return self.process_blockCond(match, node, depth, user)
-    else if 'name' in node.keys():
+    elif 'name' in node.keys():
       return self.process_singleCond(match, node, depth, user)
     else:
       return self.process_multiCond(match, node, depth, user)
