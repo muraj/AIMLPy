@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #from xml.dom import minidom
 import xml.etree.ElementTree as ElementTree
+import xml.sax.saxutils
 import re
 import string
 import time
@@ -9,6 +10,7 @@ import random
 import datetime
 import math
 import collections
+import locale
 
 def static_var(varname, val):
   def decorate(fn):
@@ -121,7 +123,7 @@ class AIMLParser:
     return [ tok.upper() for tok in self.make_path.split_regex.split(pattern) if tok != None]
 
   def innerText(self, node):
-    return ElementTree.tostring(node)[2+len(node.tag):-(4+len(node.tag))].strip().decode('utf-8', 'replace')
+    return ElementTree.tostring(node).decode('utf-8', 'replace').strip()[2+len(node.tag):-(3+len(node.tag))]
 
   def do_aiml(self, node):
     for n in node:
@@ -201,13 +203,14 @@ class Brain:
       matches.append(match)
     sentences = []
     for m in matches:
+      if len(m) == 0: continue
       sentences.append(self.respond(m, ElementTree.fromstring(m[-1]), user, depth))
     if record:
       self.resp.append((inp, sentences))
     return ' '.join(sentences)
 
   def nullfunc(self, match, node, depth, user):
-    return ElementTree.tostring(node).decode('utf-8')
+    return xml.sax.saxutils.escape(ElementTree.tostring(node).decode('utf-8'))
 
   def do_br(self, match, node, depth, user):
     return '\n'
@@ -215,7 +218,9 @@ class Brain:
   def do_star(self, match, node, depth, user):
     pat = match[:match.index(self.magic_words['that'])]
     stars=[ m for m in pat if type(m) == list]
-    return ' '.join(stars[node.get('index', 0)])
+    ret = ' '.join(stars[int(node.get('index', 0))])
+    print("Returning star:", ret)
+    return ret
 
   def do_that(self, match, node, depth, user):
     ind = [ int(x) for x in node.get('index', '1,1').split(',') ]
@@ -236,36 +241,63 @@ class Brain:
   def do_thatstar(self, match, node, depth, user):
     pat = match[match.index(self.magic_words['that']):match.index(self.magic_words['topic'])]
     stars=[ m for m in pat if type(m) == list]
-    return stars[node.get('index', 0)]
+    return ' '.join(stars[int(node.get('index', 0))])
 
   def do_topicstar(self, match, node, depth, user):
     pat = match[match.index(self.magic_words['topic']):]
     stars=[ m for m in pat if type(m) == list]
-    return stars[node.get('index', 0)]
+    return ' '.join(stars[int(node.get('index', 0))])
 
   def do_get(self, match, node, depth, user):
     return self.user[user].get(node.get('name',''),'')
 
   def do_bot(self, match, node, depth, user):
-    return self.bot.get(node.get('name',''),'')
+    n=node.get('name','')
+    return self.bot.get(n,n)
 
   def do_sr(self, match, node, depth, user):
     txt=self.do_star(match, node, depth)
     return self.match(txt, depth+1)
 
-  """def do_person2(self, match, node, depth, user):
+  def do_person2(self, match, node, depth, user):
     txt=''
     if len(node) == 0 and not node.text:
       txt=self.do_star(match, node, depth, user)
     else:
       txt=self.respond(match, node, user, depth)
-    return txt"""
+    for k,v in AIMLParser.replacements['person2'].items():
+      txt = txt.replace(k,v)
+    return txt  # TODO: 2nd personify this
 
-  #def do_person(self, match, node, depth, user):
-  #def do_gender(self, match, node, depth, user):
+  def do_person(self, match, node, depth, user):
+    txt=''
+    if len(node)==0 and not node.text:
+      txt=self.do_star(match, node, depth, user)
+    else:
+      txt=self.respond(match, node, user, depth)
+    for k,v in AIMLParser.replacements['person'].items():
+      txt = txt.replace(k,v)
+    return txt  # TODO: personify this
+
+  def do_gender(self, match, node, depth, user):
+    txt=''
+    if len(node)==0 and not node.text:
+      txt=self.do_star(match, node, depth, user)
+    else:
+      txt=self.respond(match, node, user, depth)
+    for k,v in AIMLParser.replacements['gender'].items():
+      txt = txt.replace(k,v)
+    return txt  # TODO: genderify this
 
   def do_date(self, match, node, depth, user):
-    return datetime.date.today().strftime(node.get('format', '%c'))
+    save_loc = locale.getlocale()
+    if 'locale' in node.attrib:
+      locale.setlocale(locale.LC_ALL, node.get('locale'))
+    if 'timezone' in node.attrib:
+      #LOG("Error: timezone attribute not implemented")
+      pass
+    s = datetime.date.today().strftime(node.get('format', '%c'))
+    locale.setlocale(locale.LC_ALL, save_loc)
 
   def do_id(self, match, node, depth, user):
     return user
@@ -292,34 +324,62 @@ class Brain:
     txt=self.respond(match, node, user, depth)
     return txt.capitialize()
 
-  """def do_condition(self, match, node, depth, user):
-    pred=None
+  def process_blockCond(self, match, node, depth, user):
+    pred = self.makeInputPath(self.normalize(self.user[user].get(node['name'], '')))
+    parser = AIMLParser()
+    parser.addToGraph(parser.make_path(node['value']), '')
+    if self._match(pred, parser.aiml_graph) == None:
+      return ''
+    return self.respond(match, node, depth, user)
+
+  def process_singleCond(self, match, node, depth, user):
+    choices = [n for n in list(node) if n.tag == 'li']
+    pred = self.makeInputPath(self.normalize(self.user[user].get(node['name'], '')))
+    for ch in choices:
+      if 'value' in ch.keys():
+        parser = AIMLParser()
+        parser.addToGraph(parser.make_path(ch['value']), '')
+        if self._match(pred, parser.aiml_graph) == None:
+          continue
+        del parser
+      return self.respond(match, ch, depth, user) #default or succeed
+    return ''
+
+  def process_multiCond(self, match, node, depth, user):
+    choices = [n for n in list(node) if n.tag == 'li']
+    for ch in choices:
+      if 'value' in ch.keys() and 'name' in ch.keys():
+        pred = self.makeInputPath(self.normalize(self.user[user].get(ch['name'], '')))
+        parser = AIMLParser()
+        parser.addToGraph(parser.make_path(ch['value']), '')
+        if self._match(pred, parser.aiml_graph) == None:
+          continue
+        del parser
+      return self.respond(match, ch, depth, user) #default or succeed
+    return ''
+
+  def do_condition(self, match, node, depth, user):
     if 'name' in node.keys() and 'value' in node.keys():
-      s = self.makeInputPath(self.normalize(''))  #TODO: predicate
-      return self.respond(match, node, user, depth) if self._match(s) else ''
+      return self.process_blockCond(match, node, depth, user)
     else if 'name' in node.keys():
-      pred=None #TODO: predicate
-    lis = [ n for n in node if n.tag == 'li' ]
-    default = None
-    for li in lis:
-      if 'name' in li.keys():
-        pred = None #TODO: predicate
-      if 'value' in li.keys():
-        if self._match(
-      if not ('name' in li.keys() or 'value' in li.keys()):
-        default = li
-        break
-
-    return '' if default"""
-
+      return self.process_singleCond(match, node, depth, user)
+    else:
+      return self.process_multiCond(match, node, depth, user)
+    
   def do_random(self, match, node, depth, user):
     choices = [n for n in list(node) if n.tag == 'li']
+    print(match, choices, user, depth)
     return self.respond(match, random.choice(choices), user, depth)
 
   def do_set(self, match, node, depth, user):
-    txt = self.respond(match, node, user, depth)
     name = node.get('name','')
+    print("Setting", name)
+    txt = self.respond(match, node, user, depth)
+    if not user in self.user:
+      #LOG('WARNING: cannot find user session: ', user)
+      pass
     self.user[user][name] = txt
+    print("Setting", name, '=', txt)
     return txt
 
   def do_gossip(self, match, node, depth, user):
@@ -327,7 +387,8 @@ class Brain:
     return ''
 
   def do_srai(self, match, node, depth, user):
-    txt=self.respond(match, node, user, depth)
+    print("ENTERING SRAI")
+    txt=self.respond(match, node, user, depth+1)
     return self.match(txt, depth+1)
 
   def do_think(self, match, node, depth, user):
@@ -377,6 +438,8 @@ class Brain:
     return str(locs.get('ret', ''))
 
   def respond(self, match, template, user, depth=0):
+    print('*** Responding to:', match, '\n', template, '\n', user)
+    #input('>')
     if depth > self.bot.get('recursion', 10):
       return ''
     txt = template.text if template.text else ''
@@ -388,19 +451,20 @@ class Brain:
 
   def _match(self, path, node=None):
     if node == None: node = self.brain
+    #print('Match start:', path, node.keys())
     if len(path) == 0:
       if self.magic_words['template'] in node:
         return [node[self.magic_words['template']]]
       else: return None
     # Match _ wildcard
-    if '_' in node and not (path[0] in self.magic_words.values()):
-      #print('***Matching _', repr(path))
+    if '_' in node:
       n = node['_']
-      for i in range(len(path)):
-        if path[i] in self.magic_words.values(): break
-        m = self._match(path[i+1:], n)
+      for i in range(len(path)+1):
+        #print('***Matching *', repr(path))
+        if i>0 and path[:i][-1] in self.magic_words.values(): break
+        m = self._match(path[i:], n)
         if m != None:
-          m = [path[:i+1]] + m
+          m = [path[:i]] + m
           return m
     # Match real token
     if path[0] in node:
@@ -411,23 +475,23 @@ class Brain:
         return m
     # Match bot predicate
     if self.magic_words['bot'] in node:
-      #print('***Matching bot', repr(path))
       for name, d in node[self.magic_words['bot']].items():
         #TODO: replace name with bot predicate
+        #print('***Matching bot', repr(path))
         if name.upper() == path[0]:
           m = self._match(path[1:], node[path[0]])
           if m != None:
             m = [path[0]] + m
             return m
     # Match * wildcard
-    if '*' in node and not (path[0] in self.magic_words.values()):
-      #print('***Matching *', repr(path))
+    if '*' in node:
       n = node['*']
-      for i in range(len(path)):
-        if path[i] in self.magic_words.values(): break
-        m = self._match(path[i+1:], n)
+      for i in range(len(path)+1):
+        #print('***Matching *', repr(path))
+        if i>0 and path[:i][-1] in self.magic_words.values(): break
+        m = self._match(path[i:], n)
         if m != None:
-          m = [path[:i+1]] + m
+          m = [path[:i]] + m
           return m
     return None
 

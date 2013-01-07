@@ -1,3 +1,4 @@
+#!/usr/env python3
 import unittest
 import aimlpy
 
@@ -50,10 +51,17 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
     pass
 
   def test_bot(self):
-    self.assertEqual(self.bot.reply('enterprise come in'), ' here.')
+    self.assertEqual(self.bot.reply('enterprise come in'), 'name here.')
     self.bot.bot['name'] = 'Jordi'
     self.assertEqual(self.bot.reply('enterprise come in'), 'Jordi here.')
     self.bot.reply('FORMAT PROPERTIES')
+
+  def test_srai(self):
+    self.assertEqual(self.bot.reply('consider it quiet'), 'Then we can hear each other better.')
+
+  def test_random(self):
+    self.bot.reply('test link')
+    self.bot.reply('test link')
 
 if __name__ == '__main__':
   unittest.main()
