@@ -1,4 +1,4 @@
-AIMLPy
+AIMLPy [![Build Status](https://travis-ci.org/muraj/AIMLPy.png?branch=master)](https://travis-ci.org/muraj/AIMLPy)
 ======
 
 Ongoing python implementation of the AIML 1.0.1 specification
