@@ -290,4 +290,23 @@ Nothing <random></random>here!
    </lowercase>   But   <set name="ignored">Here   They</set>   Do!</template>
 </category>
 
+<!-- python support -->
+<category>
+<pattern>TEST PYTHON</pattern>
+<template><python>print("Hello World!")</python></template>
+</category>
+
+<!-- learn -->
+<category>
+<pattern>LEARN TARGET *</pattern>
+<template>What?</template>
+</category>
+<category>
+<pattern>TEST LEARN</pattern>
+<template><learn><category>
+  <pattern>LEARN TARGET SUCCESS</pattern>
+  <template>Ahhhhh...</template>
+  </category></learn>DONE</template>
+</category>
+
 </aiml>

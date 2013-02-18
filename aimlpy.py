@@ -15,6 +15,8 @@ import codecs
 import os
 import subprocess
 import shlex
+import io
+import sys
 
 def static_var(varname, val):
   def decorate(fn):
@@ -436,6 +438,7 @@ class Brain:
     node.tag = 'aiml' # Treat the <learn> as an <aiml> for parsing
     parser._parse(node)
     self.brain = parser.aiml_graph
+    return ''
 
   def do_system(self, match, node, depth, user):
     try:
@@ -450,13 +453,16 @@ class Brain:
   def do_python(self, match, node, depth, user):
     # This allows python code to be parsed and executed
     txt=self.respond(match, node, user, depth)
-    locs={'bot':self, 'ret':None}
+    locs={'bot':self}
+    buff = sys.stdout = io.StringIO()
     try:
       exec(txt, {}, locs)
     except Exception as e:
       #LOG('ERROR: exception handling python tag\n', e)
       pass
-    return str(locs.get('ret', ''))
+    finally:
+      sys.stdout = sys.__stdout__
+    return buff.getvalue()
 
   def respond(self, match, template, user, depth=0):
     if depth > self.bot.get('recursion', 10):
