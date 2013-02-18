@@ -12,6 +12,9 @@ import math
 import collections
 import locale
 import codecs
+import os
+import subprocess
+import shlex
 
 def static_var(varname, val):
   def decorate(fn):
@@ -191,14 +194,32 @@ class Brain:
     s.close()
 
   def reply(self, msg, user=''):
-    return self.match(msg, user, record=True)
+    return self.match(msg, user, record=True).strip()
+
+  def getBotResponse(self, hist_index, sent_index, user=''):
+    if len(self.resp) != 0 and sent_index-1 < len(self.resp[-hist_index][1]):
+      return self.resp[-hist_index][1][sent_index-1]
+    return ''
+
+  def getUserResponse(self, hist_index, sent_index, user=''):
+    if len(self.resp) != 0 and sent_index-1 < len(self.resp[-hist_index][0]):
+      return self.resp[-hist_index][0][sent_index-1]
+    return ''
 
   def match(self, inp, user, depth=0, record=False):
     self.user[user] = self.user.get(user, {}) #Allocate a new user if needed
     current_node = self.brain
     matches = []
     for s in self.normalize(inp):
-      s = self.makeInputPath(s) + [self.magic_words['that'],'', self.magic_words['topic'],'']
+      that = self.makeInputPath(self.normalize(self.getBotResponse(1,1))[0])
+      if len(that) == 0: that = ['']
+      topic = self.makeInputPath(self.normalize(self.user[user].get('topic',''))[0])
+      if len(topic) == 0: topic = ['']
+      s = self.makeInputPath(s)
+      s.append(self.magic_words['that'])
+      s.extend(that)
+      s.append(self.magic_words['topic'])
+      s.extend(topic)
       match = self._match(s)
       if match == None: continue
       matches.append(match)
@@ -207,7 +228,7 @@ class Brain:
       if len(m) == 0: continue
       sentences.append(self.respond(m, ElementTree.fromstring(m[-1]), user, depth))
     if record:
-      self.resp.append((inp, sentences))
+      self.resp.append((self.normalize(inp), sentences))
     return ' '.join(sentences)
 
   def nullfunc(self, match, node, depth, user):
@@ -219,15 +240,14 @@ class Brain:
   def do_star(self, match, node, depth, user):
     pat = match[:match.index(self.magic_words['that'])]
     stars=[ m for m in pat if type(m) == list]
-    ret = ' '.join(stars[int(node.get('index', 0))])
-    #print("Returning star:", ret)
+    ret = ' '.join(stars[int(node.get('index', 1))-1])
     return ret
 
   def do_that(self, match, node, depth, user):
     ind = [ int(x) for x in node.get('index', '1,1').split(',') ]
     ind.extend([1,1])
     try:
-      return self.resp[-ind[0]][1][ind[1]]
+      return self.getBotResponse(ind[0], ind[1])
     except IndexError:
       return ''
 
@@ -235,14 +255,14 @@ class Brain:
     ind = [ int(x) for x in node.get('index', '1,1').split(',') ]
     ind.extend([1,1])
     try:
-      return self.resp[-ind[0]][0][ind[1]]
+      return self.getUserResponse(ind[0], ind[1])
     except IndexError:
       return ''
 
   def do_thatstar(self, match, node, depth, user):
     pat = match[match.index(self.magic_words['that']):match.index(self.magic_words['topic'])]
     stars=[ m for m in pat if type(m) == list]
-    return ' '.join(stars[int(node.get('index', 0))])
+    return ' '.join(stars[int(node.get('index', 1))-1])
 
   def do_topicstar(self, match, node, depth, user):
     pat = match[match.index(self.magic_words['topic']):]
@@ -254,11 +274,11 @@ class Brain:
 
   def do_bot(self, match, node, depth, user):
     n=node.get('name','')
-    return self.bot.get(n,n)
+    return self.bot.get(n,'')
 
   def do_sr(self, match, node, depth, user):
-    txt=self.do_star(match, node, depth)
-    return self.match(txt, depth+1)
+    txt=self.do_star(match, node, depth, user)
+    return self.match(txt, user, depth+1)
 
   def do_person2(self, match, node, depth, user):
     txt=''
@@ -291,14 +311,14 @@ class Brain:
     return txt  # TODO: genderify this
 
   def do_date(self, match, node, depth, user):
-    save_loc = locale.getlocale()
     if 'locale' in node.attrib:
       locale.setlocale(locale.LC_ALL, node.get('locale'))
     if 'timezone' in node.attrib:
       #LOG("Error: timezone attribute not implemented")
       pass
-    s = datetime.date.today().strftime(node.get('format', '%c'))
-    locale.setlocale(locale.LC_ALL, save_loc)
+    s = datetime.datetime.now().strftime(node.get('format', '%c'))
+    locale.setlocale(locale.LC_ALL)
+    return s
 
   def do_id(self, match, node, depth, user):
     return user
@@ -323,40 +343,40 @@ class Brain:
 
   def do_sentence(self, match, node, depth, user):
     txt=self.respond(match, node, user, depth)
-    return txt.capitialize()
+    return txt.capitalize()
 
   def process_blockCond(self, match, node, depth, user):
-    pred = self.makeInputPath(self.normalize(self.user[user].get(node['name'], '')))
+    pred = self.makeInputPath(self.normalize(self.user[user].get(node.get('name',''), ''))[0])
     parser = AIMLParser()
-    parser.addToGraph(parser.make_path(node['value']), '')
+    parser.addToGraph(parser.make_path(node.get('value','')), '')
     if self._match(pred, parser.aiml_graph) == None:
       return ''
-    return self.respond(match, node, depth, user)
+    return self.respond(match, node, user, depth)
 
   def process_singleCond(self, match, node, depth, user):
     choices = [n for n in list(node) if n.tag == 'li']
-    pred = self.makeInputPath(self.normalize(self.user[user].get(node['name'], '')))
+    pred = self.makeInputPath(self.normalize(self.user[user].get(node.get('name',''), ''))[0])
     for ch in choices:
       if 'value' in ch.keys():
         parser = AIMLParser()
-        parser.addToGraph(parser.make_path(ch['value']), '')
+        parser.addToGraph(parser.make_path(ch.get('value','')), '')
         if self._match(pred, parser.aiml_graph) == None:
           continue
         del parser
-      return self.respond(match, ch, depth, user) #default or succeed
+      return self.respond(match, ch, user, depth) #default or succeed
     return ''
 
   def process_multiCond(self, match, node, depth, user):
     choices = [n for n in list(node) if n.tag == 'li']
     for ch in choices:
       if 'value' in ch.keys() and 'name' in ch.keys():
-        pred = self.makeInputPath(self.normalize(self.user[user].get(ch['name'], '')))
+        pred = self.makeInputPath(self.normalize(self.user[user].get(ch.get('name',''), ''))[0])
         parser = AIMLParser()
-        parser.addToGraph(parser.make_path(ch['value']), '')
+        parser.addToGraph(parser.make_path(ch.get('value','')), '')
         if self._match(pred, parser.aiml_graph) == None:
           continue
         del parser
-      return self.respond(match, ch, depth, user) #default or succeed
+      return self.respond(match, ch, user, depth) #default or succeed
     return ''
 
   def do_condition(self, match, node, depth, user):
@@ -369,18 +389,16 @@ class Brain:
     
   def do_random(self, match, node, depth, user):
     choices = [n for n in list(node) if n.tag == 'li']
-    #print(match, choices, user, depth)
+    if len(choices) == 0: return ''
     return self.respond(match, random.choice(choices), user, depth)
 
   def do_set(self, match, node, depth, user):
     name = node.get('name','')
-    #print("Setting", name)
-    txt = self.respond(match, node, user, depth)
+    txt = node.get('value', self.respond(match, node, user, depth))
     if not user in self.user:
       #LOG('WARNING: cannot find user session: ', user)
       pass
     self.user[user][name] = txt
-    #print("Setting", name, '=', txt)
     return txt
 
   def do_gossip(self, match, node, depth, user):
@@ -388,9 +406,8 @@ class Brain:
     return ''
 
   def do_srai(self, match, node, depth, user):
-    #print("ENTERING SRAI")
     txt=self.respond(match, node, user, depth+1)
-    return self.match(txt, depth+1)
+    return self.match(txt, user, depth+1)
 
   def do_think(self, match, node, depth, user):
     self.respond(match, node, user, depth)
@@ -421,7 +438,10 @@ class Brain:
     self.brain = parser.aiml_graph
 
   def do_system(self, match, node, depth, user):
-    return str(os.system(self.respond(match, node, user, depth)))
+    try:
+      return subprocess.check_output(shlex.split(self.respond(match, node, user, depth)), shell=False).decode('utf-8').strip()
+    except subprocess.CalledProcessError:
+      return 'error'
 
   def do_javascript(self, match, node, depth, user):
     #LOG('ERROR: Javascript not implemented')
@@ -439,8 +459,6 @@ class Brain:
     return str(locs.get('ret', ''))
 
   def respond(self, match, template, user, depth=0):
-    #print('*** Responding to:', match, '\n', template, '\n', user)
-    #input('>')
     if depth > self.bot.get('recursion', 10):
       return ''
     txt = template.text if template.text else ''
@@ -452,7 +470,6 @@ class Brain:
 
   def _match(self, path, node=None):
     if node == None: node = self.brain
-    #print('Match start:', path, node.keys())
     if len(path) == 0:
       if self.magic_words['template'] in node:
         return [node[self.magic_words['template']]]
@@ -461,7 +478,6 @@ class Brain:
     if '_' in node:
       n = node['_']
       for i in range(len(path)+1):
-        #print('***Matching *', repr(path))
         if i>0 and path[:i][-1] in self.magic_words.values(): break
         m = self._match(path[i:], n)
         if m != None:
@@ -469,7 +485,6 @@ class Brain:
           return m
     # Match real token
     if path[0] in node:
-      #print('***Matching tok', repr(path))
       m = self._match(path[1:], node[path[0]])
       if m != None:
         m = [path[0]] + m
@@ -478,7 +493,6 @@ class Brain:
     if self.magic_words['bot'] in node:
       for name, d in node[self.magic_words['bot']].items():
         #TODO: replace name with bot predicate
-        #print('***Matching bot', repr(path))
         if name.upper() == path[0]:
           m = self._match(path[1:], node[path[0]])
           if m != None:
@@ -488,7 +502,6 @@ class Brain:
     if '*' in node:
       n = node['*']
       for i in range(len(path)+1):
-        #print('***Matching *', repr(path))
         if i>0 and path[:i][-1] in self.magic_words.values(): break
         m = self._match(path[i:], n)
         if m != None:

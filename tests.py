@@ -3,6 +3,28 @@ import unittest
 import aimlpy
 import datetime
 import codecs
+import functools
+import pdb
+import sys
+
+DEBUG = True
+
+def debug_on(*exceptions):
+  global DEBUG
+  if not exceptions:
+    exceptions = (AssertionError, )
+  if not DEBUG:
+    return lambda fu: fu
+  else:
+    def decorator(f):
+      @functools.wraps(f)
+      def wrapper(*args, **kwargs):
+        try:
+          return f(*args, **kwargs)
+        except exceptions:
+          pdb.post_mortem(sys.exc_info()[2])
+      return wrapper
+    return decorator
 
 def files(*args):
   def decorator(cls):
@@ -34,10 +56,11 @@ class PyAIMLTest:
 
 @files('alice/self-test.aiml')
 class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
+  @debug_on()
   def test_bot(self):
-    self.assertEqual(self.bot.reply('TEST BOT'), 'My name is ')
+    self.assertEqual(self.bot.reply('TEST BOT'), 'My name is')
     self.bot.bot['name'] = 'Jordi'
-    self.assertEqual(self.bot.reply('enterprise come in'), 'My name is Jordi')
+    self.assertEqual(self.bot.reply('TEST BOT'), 'My name is Jordi')
 
   def test_condition(self):
     self.bot.user['Alice'] = { 'gender': 'female' }
@@ -58,7 +81,7 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
     ## TODO: add testing of formatting
     d = self.bot.reply('TEST DATE')[len('The date is '):]
     try:
-      datetime.datetime.strptime('%c', d)
+      datetime.datetime.strptime(d, '%c')
     except ValueError:
       self.fail('Failed to parse date: d')
 
@@ -70,19 +93,19 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
     self.assertEqual(self.bot.reply('TEST GENDER'), "he'd told her he heard that her hernia is history")
 
   def test_getset(self):
-    self.assertEqual(self.bot.reply('TEST GET AND SET'), 'cheese.  My favorite food is cheese')
+    self.assertEqual(self.bot.reply('TEST GET AND SET'), 'cheese. My favorite food is cheese')
 
   def test_gossip(self):
     pass
 
   def test_id(self):
-    self.assertEqual(self.bot.reply('TEST ID'), 'Your id is ')
+    self.assertEqual(self.bot.reply('TEST ID'), 'Your id is')
     self.assertEqual(self.bot.reply('TEST ID', 'Alice'), 'Your id is Alice')
 
   def test_input(self):
     ## TODO: More tests on bounds, empty, etc.
     self.bot.reply('TEST')
-    self.assertEqual(self.bot.reply('TEST INPUT'), 'TEST')
+    self.assertEqual(self.bot.reply('TEST INPUT'), 'You just said: TEST')
 
   def test_javascript(self):
     pass 
@@ -103,7 +126,7 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
     picks=[]
     for i in range(100): #Try 100x's to get all possible choices
       if len(picks) == 3: break
-      d=self.bot.reply('TEST RANDOM EMPTY')[-1]
+      d=self.bot.reply('TEST RANDOM')[-1]
       if not d in picks: picks.append(d)
     else:
       self.fail('Unable to get all possiblities after 100 tries...')
@@ -136,13 +159,13 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
   def test_that(self):
     self.assertEqual(self.bot.reply('SRAI TARGET'), 'srai test passed')
     self.assertEqual(self.bot.reply('TEST THAT'), 'I just said: srai test passed')
-    self.assertEqual(self.bot.reply('TEST THAT'), 'I already answered this question')
+    self.assertEqual(self.bot.reply('TEST THAT'), 'I have already answered this question')
 
   def test_thatstar(self):
     self.assertEqual(self.bot.reply('TEST THATSTAR'), 'I say beans')
-    self.assertEqual(self.bot.reply('TEST THATSTAR'), 'I just said "I say beans"')
-    self.assertEqual(self.bot.reply('TEST THATSTAR MULTIPLE'), 'I say frank and beans for everybody')
-    self.assertEqual(self.bot.reply('TEST THATSTAR MULTIPLE'), 'Yes, frank and beans for all!')
+    self.assertEqual(self.bot.reply('TEST THATSTAR'), 'I just said "BEANS"')
+    self.assertEqual(self.bot.reply('TEST THATSTAR MULTIPLE'), 'I say beans and franks for everybody')
+    self.assertEqual(self.bot.reply('TEST THATSTAR MULTIPLE'), 'Yes, BEANS and FRANKS for all!')
 
   def test_think(self):
     self.assertEqual(self.bot.reply('TEST THINK'), '')
