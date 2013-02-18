@@ -396,7 +396,7 @@
 <category><pattern>WORRY *</pattern>
 <template><srai>I WORRY <star/> </srai></template>
 </category>
-<category><pattern>WHAT´S *</pattern>
+<category><pattern>WHAT?S *</pattern>
 <template><srai>WHAT IS <star/></srai></template>
 </category>
 <category><pattern>ALL RITE *</pattern>

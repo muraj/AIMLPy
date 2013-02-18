@@ -11,6 +11,7 @@ import datetime
 import math
 import collections
 import locale
+import codecs
 
 def static_var(varname, val):
   def decorate(fn):
@@ -219,7 +220,7 @@ class Brain:
     pat = match[:match.index(self.magic_words['that'])]
     stars=[ m for m in pat if type(m) == list]
     ret = ' '.join(stars[int(node.get('index', 0))])
-    print("Returning star:", ret)
+    #print("Returning star:", ret)
     return ret
 
   def do_that(self, match, node, depth, user):
@@ -368,18 +369,18 @@ class Brain:
     
   def do_random(self, match, node, depth, user):
     choices = [n for n in list(node) if n.tag == 'li']
-    print(match, choices, user, depth)
+    #print(match, choices, user, depth)
     return self.respond(match, random.choice(choices), user, depth)
 
   def do_set(self, match, node, depth, user):
     name = node.get('name','')
-    print("Setting", name)
+    #print("Setting", name)
     txt = self.respond(match, node, user, depth)
     if not user in self.user:
       #LOG('WARNING: cannot find user session: ', user)
       pass
     self.user[user][name] = txt
-    print("Setting", name, '=', txt)
+    #print("Setting", name, '=', txt)
     return txt
 
   def do_gossip(self, match, node, depth, user):
@@ -387,7 +388,7 @@ class Brain:
     return ''
 
   def do_srai(self, match, node, depth, user):
-    print("ENTERING SRAI")
+    #print("ENTERING SRAI")
     txt=self.respond(match, node, user, depth+1)
     return self.match(txt, depth+1)
 
@@ -438,7 +439,7 @@ class Brain:
     return str(locs.get('ret', ''))
 
   def respond(self, match, template, user, depth=0):
-    print('*** Responding to:', match, '\n', template, '\n', user)
+    #print('*** Responding to:', match, '\n', template, '\n', user)
     #input('>')
     if depth > self.bot.get('recursion', 10):
       return ''
@@ -507,7 +508,7 @@ def loadaiml(a, dir='alice/'):
   for fn in glob.glob(os.path.join(dir, '*.aiml')):
     print('Parsing',fn)
     try:
-      with open(fn, 'r') as f:
+      with codecs.open(fn, mode='r', encoding='UTF-8') as f:
         start = time.clock()
         a.parse(f)
         end = time.clock()
@@ -523,7 +524,7 @@ if __name__ == '__main__':
   if len(sys.argv) > 1: #Get command-line filenames only
     for fn in sys.argv[1:]:
       print("Parsing", fn)
-      with open(fn, 'r') as f:
+      with codecs.open(fn, mode='r', encoding='UTF-8') as f:
         a.parse(f)
     brain = Brain(a.aiml_graph)
     print('Total time:',time.clock() - t)
