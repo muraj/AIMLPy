@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="ISO-8859-1"?>
 <!--
 This file contains some simple AIML categories designed to test the Python
-AIML interpreter kernel.  Do not make any modifications to this file without
-updating the tests in Kernel.py!
+AIML interpreter kernel.
 -->
 
 <aiml version="1.0.1" xmlns:aiml="http://alicebot.org/2001/AIML-1.0.1">
@@ -253,7 +252,7 @@ Nothing <random></random>here!
 <topic name="SOYLENT *">
 <category>
 <pattern>TEST TOPICSTAR</pattern>
-<template>Solyent <topicstar/> is made of people!</template>
+<template>Soylent <topicstar/> is made of people!</template>
 </category>
 </topic>
 <topic name="SOYLENT * AND *">

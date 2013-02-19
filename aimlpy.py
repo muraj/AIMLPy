@@ -215,7 +215,7 @@ class Brain:
     for s in self.normalize(inp):
       that = self.makeInputPath(self.normalize(self.getBotResponse(1,1))[0])
       if len(that) == 0: that = ['']
-      topic = self.makeInputPath(self.normalize(self.user[user].get('topic',''))[0])
+      topic = self.makeInputPath(self.normalize(self.user[user].get(self.magic_words['topic'],''))[0])
       if len(topic) == 0: topic = ['']
       s = self.makeInputPath(s)
       s.append(self.magic_words['that'])
@@ -269,7 +269,7 @@ class Brain:
   def do_topicstar(self, match, node, depth, user):
     pat = match[match.index(self.magic_words['topic']):]
     stars=[ m for m in pat if type(m) == list]
-    return ' '.join(stars[int(node.get('index', 0))])
+    return ' '.join(stars[int(node.get('index', 1))-1])
 
   def do_get(self, match, node, depth, user):
     return self.user[user].get(node.get('name',''),'')
@@ -454,6 +454,8 @@ class Brain:
     # This allows python code to be parsed and executed
     txt=self.respond(match, node, user, depth)
     locs={'bot':self}
+    for attr in node:
+      locs[attr] = node.get(attr,'')
     buff = sys.stdout = io.StringIO()
     try:
       exec(txt, {}, locs)
