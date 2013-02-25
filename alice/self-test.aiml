@@ -295,6 +295,16 @@ Nothing <random></random>here!
 <template><python>print("Hello World!")</python></template>
 </category>
 
+<category>
+<pattern>TEST PYTHON ARGS</pattern>
+<template><python s="Hello World!">print(s)</python></template>
+</category>
+
+<category>
+<pattern>TEST PYTHON ERROR</pattern>
+<template><python>raise NameError('ERROR')</python></template>
+</category>
+
 <!-- learn -->
 <category>
 <pattern>LEARN TARGET *</pattern>

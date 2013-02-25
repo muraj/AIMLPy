@@ -202,6 +202,7 @@ class SimpleResponseTests(PyAIMLTest, unittest.TestCase):
 
   def test_python(self):
     self.assertEqual(self.bot.reply('TEST PYTHON'), 'Hello World!')
+    self.assertEqual(self.bot.reply('TEST PYTHON ARGS'), 'Hello World!')
 
   def test_learn(self):
     ## TODO: Test eval tags

@@ -454,8 +454,8 @@ class Brain:
     # This allows python code to be parsed and executed
     txt=self.respond(match, node, user, depth)
     locs={'bot':self}
-    for attr in node:
-      locs[attr] = node.get(attr,'')
+    for attr in node.keys():
+      locs[attr] = self.respond(match, ElementTree.fromstring('<dummy>'+node.get(attr, '')+'</dummy>'), user, depth)
     buff = sys.stdout = io.StringIO()
     try:
       exec(txt, {}, locs)
